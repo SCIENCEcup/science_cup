@@ -47,7 +47,7 @@ class GameRepository {
         group:group_id(id, name)
       ''')
         .eq('season_id', seasonId)
-        .order('start_date');
+        .order('start_date', ascending: true);
 
     return (response as List<dynamic>)
         .map((gameJson) => GameSummary.fromJson(gameJson))
@@ -125,7 +125,7 @@ class GameRepository {
         group:group_id(id, name)
       ''')
         .eq('group_id', groupId)
-        .order('start_date');
+        .order('start_date', ascending: true);
 
     return (response as List<dynamic>)
         .map((gameJson) => Game.fromJson(gameJson))

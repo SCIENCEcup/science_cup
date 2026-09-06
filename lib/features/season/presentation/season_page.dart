@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:science_cup_app/core/navigation/season_tabs.dart';
 import 'package:science_cup_app/core/presentation/widgets/auth_profile_button.dart';
 import 'package:science_cup_app/features/season/data/models/season.dart';
+import 'package:science_cup_app/features/season/presentation/add_season_button.dart';
 import 'package:science_cup_app/features/season/presentation/admin/admin_season_view.dart';
 import 'package:science_cup_app/features/standings/presentation/all_standings_view.dart';
 import 'package:science_cup_app/features/team/application/team_notifier.dart';
@@ -73,7 +74,15 @@ class SeasonPage extends ConsumerWidget {
                 ),
               ),
               centerTitle: false,
-              actions: [AuthProfileButton()],
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                  child: AddSeasonButton(
+                    includeText: false,
+                  ), // Tilføj sæson-knap uden tekst
+                ),
+                AuthProfileButton(),
+              ],
             ),
             body: RefreshIndicator(
               onRefresh: () async {

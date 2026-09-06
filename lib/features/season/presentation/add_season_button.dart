@@ -7,7 +7,8 @@ import 'package:science_cup_app/shared/presentation/modals/show_create_entity_mo
 import '../../auth/application/auth_notifier.dart';
 
 class AddSeasonButton extends ConsumerWidget {
-  const AddSeasonButton({super.key});
+  const AddSeasonButton({super.key, this.includeText = true});
+  final bool includeText;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -22,11 +23,16 @@ class AddSeasonButton extends ConsumerWidget {
     }
 
     // 3. Hvis brugeren ER admin, viser vi den rigtige knap
-    return FilledButton.icon(
-      onPressed: () => _showAddSeasonDialog(context),
-      icon: const Icon(Icons.add),
-      label: const Text('Tilføj sæson'),
-    );
+    return includeText == false
+        ? IconButton(
+            onPressed: () => _showAddSeasonDialog(context),
+            icon: Icon(Icons.add),
+          )
+        : FilledButton.icon(
+            onPressed: () => _showAddSeasonDialog(context),
+            icon: const Icon(Icons.add),
+            label: const Text('Tilføj sæson'),
+          );
   }
 
   void _showAddSeasonDialog(BuildContext context) {

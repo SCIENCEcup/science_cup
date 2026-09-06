@@ -7,8 +7,16 @@ part 'route_season_id_provider.g.dart';
 @riverpod
 int? routeSeasonId(Ref ref) {
   final router = ref.watch(appRouterProvider);
-  final currentConfig =
-      router.routerDelegate.currentConfiguration; // RouteMatchList
+  final routerDelegate = router.routerDelegate;
+
+  // GoRouter kalder ikke automatisk denne provider igen, når man navigerer
+  // (currentConfiguration læses kun én gang uden dette). Vi lytter derfor
+  // selv på routerDelegate og genberegner providerens værdi ved navigation.
+  void listener() => ref.invalidateSelf();
+  routerDelegate.addListener(listener);
+  ref.onDispose(() => routerDelegate.removeListener(listener));
+
+  final currentConfig = routerDelegate.currentConfiguration; // RouteMatchList
   final uri = currentConfig.uri; // Uri
   final segments = uri.pathSegments; // List<String>
 

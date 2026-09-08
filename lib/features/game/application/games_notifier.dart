@@ -12,4 +12,13 @@ class GamesNotifier extends _$GamesNotifier {
     final result = await gameRepo.getGamesForSeason(seasonId);
     return result;
   }
+
+  Future<void> deleteGame(int id) async {
+    try {
+      await ref.read(gameRepositoryProvider).deleteGame(id);
+      ref.invalidateSelf();
+    } catch (e, stackTrace) {
+      state = AsyncError('Kunne ikke slette kamp: $e', stackTrace);
+    }
+  }
 }

@@ -88,6 +88,14 @@ class GameRepository {
     }
   }
 
+  Future<void> deleteGame(int id) async {
+    try {
+      await _supabase.from('games').delete().eq('id', id);
+    } catch (e) {
+      throw Exception('Kunne ikke slette kamp: $e');
+    }
+  }
+
   Future<void> reportGameResult({
     required int gameId,
     required int? homeScore,

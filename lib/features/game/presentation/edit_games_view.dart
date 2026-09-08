@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:science_cup_app/features/game/application/games_notifier.dart';
 import 'package:science_cup_app/features/game/data/models/game_summary.dart';
-import 'package:science_cup_app/features/game/presentation/add_game_modal.dart';
+import 'package:science_cup_app/features/game/presentation/add_edit_game_modal.dart';
 import 'package:science_cup_app/features/game/presentation/display_game.dart';
 import 'package:science_cup_app/features/season/application/active_season/current_season_provider.dart';
 import 'package:science_cup_app/shared/presentation/modals/show_create_entity_modal_bottom_sheet.dart';
@@ -31,7 +31,7 @@ class EditGamesView extends ConsumerWidget {
                 showCreateEntityModalBottomSheet(
                   context: context,
                   builder: (context) {
-                    return AddGameModal();
+                    return AddEditGameModal();
                   },
                 );
               },

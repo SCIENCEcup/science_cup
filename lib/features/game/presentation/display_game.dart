@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:science_cup_app/features/game/application/game_provider.dart';
+import 'package:science_cup_app/features/game/application/games_notifier.dart';
 import 'package:science_cup_app/features/game/data/enums/game_enums.dart';
 import 'package:science_cup_app/features/game/data/models/game_summary.dart';
+import 'package:science_cup_app/features/game/presentation/add_edit_game_modal.dart';
 import 'package:science_cup_app/features/game/presentation/add_game_score_modal.dart';
+import 'package:science_cup_app/features/group/application/group_notifier.dart';
 import 'package:science_cup_app/features/permissions/application/user_permissions_notifier.dart';
+import 'package:science_cup_app/features/season/application/active_season/current_season_provider.dart';
+import 'package:science_cup_app/features/team/application/team_providers.dart';
 import 'package:science_cup_app/features/team/presentation/team_icon.dart';
 import 'package:science_cup_app/shared/presentation/modals/show_create_entity_modal_bottom_sheet.dart';
+import 'package:science_cup_app/shared/presentation/widgets/confirmation_dialog/confirmation_fields.dart';
+import 'package:science_cup_app/shared/presentation/widgets/edit_delete_menu.dart';
 
 class DisplayGame extends ConsumerWidget {
   const DisplayGame({super.key, required this.game});
@@ -19,6 +27,8 @@ class DisplayGame extends ConsumerWidget {
     final canReport =
         game.homeTeam?.id != null &&
         userPermissions?.canReportResults(game.homeTeam!.id) == true;
+    final isAdmin = userPermissions?.isAdmin == true;
+    final seasonId = ref.watch(currentSeasonProvider)?.id;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
@@ -27,7 +37,26 @@ class DisplayGame extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 10.0),
         child: Column(
           children: [
-            _GameInfoRow(game: game),
+            _GameInfoRow(
+              game: game,
+              trailing: isAdmin
+                  ? EditDeleteMenu(
+                      onEdit: () =>
+                          _showEditGameModal(context, game, seasonId),
+                      confirmationFields: ConfirmationFields(
+                        title: "Sletning af kamp",
+                        content: "Du er ved at slette denne kamp",
+                        confirmButtonText: "Slet",
+                      ),
+                      onDelete: (confirmed) async {
+                        if (!confirmed || seasonId == null) return;
+                        await ref
+                            .read(gamesProvider(seasonId).notifier)
+                            .deleteGame(game.id);
+                      },
+                    )
+                  : null,
+            ),
             const SizedBox(height: 10.0),
             _GameScoreRow(game: game),
             if (game.refereeTeam?.name != null) ...[
@@ -56,12 +85,74 @@ class DisplayGame extends ConsumerWidget {
       ),
     );
   }
+
+  void _showEditGameModal(
+    BuildContext context,
+    GameSummary game,
+    int? seasonId,
+  ) {
+    showCreateEntityModalBottomSheet(
+      context: context,
+      builder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final gameAsync = ref.watch(gameProvider(game.id));
+          return gameAsync.when(
+            data: (fullGame) {
+              // AddEditGameModal (via CreateEntityModal) sætter kun sine
+              // interne felt-værdier i initState(). Hvis gruppe-/hold-
+              // listerne stadig loader, når modalen bygges første gang,
+              // ender hjemmehold, udehold og dommer med at stå tomme, selv
+              // om dataen kommer et øjeblik efter. Vi forvarmer derfor de
+              // samme providers her, så de allerede har data klar, inden
+              // AddEditGameModal mountes.
+              final groupsAsync = seasonId != null
+                  ? ref.watch(groupProvider(seasonId))
+                  : null;
+              final groupId = fullGame.group?.id;
+              final teamsAsync = groupId != null
+                  ? ref.watch(teamsByGroupProvider(groupId))
+                  : null;
+
+              final isLoading =
+                  (groupsAsync?.isLoading ?? false) ||
+                  (teamsAsync?.isLoading ?? false);
+              final error = groupsAsync?.error ?? teamsAsync?.error;
+
+              if (isLoading) {
+                return const Padding(
+                  padding: EdgeInsets.all(32.0),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              if (error != null) {
+                return Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text("Kunne ikke indlæse kamp: $error"),
+                );
+              }
+
+              return AddEditGameModal(game: fullGame);
+            },
+            loading: () => const Padding(
+              padding: EdgeInsets.all(32.0),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            error: (error, _) => Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text("Kunne ikke indlæse kamp: $error"),
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
 
 class _GameInfoRow extends StatelessWidget {
-  const _GameInfoRow({required this.game});
+  const _GameInfoRow({required this.game, this.trailing});
 
   final GameSummary game;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -89,6 +180,7 @@ class _GameInfoRow extends StatelessWidget {
           const SizedBox(width: 8.0),
         ],
         _StatusBadge(status: game.status),
+        ?trailing,
       ],
     );
   }

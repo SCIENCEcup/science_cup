@@ -12,8 +12,8 @@ import 'package:science_cup_app/features/team/data/models/team.dart';
 import 'package:science_cup_app/features/team/presentation/add_team_modal.dart';
 import 'package:science_cup_app/shared/presentation/modals/create_entity_modal.dart';
 
-class AddGameModal extends ConsumerWidget {
-  const AddGameModal({super.key, this.game});
+class AddEditGameModal extends ConsumerWidget {
+  const AddEditGameModal({super.key, this.game});
   final Game? game;
 
   @override

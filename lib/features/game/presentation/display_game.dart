@@ -30,6 +30,10 @@ class DisplayGame extends ConsumerWidget {
             _GameInfoRow(game: game),
             const SizedBox(height: 10.0),
             _GameScoreRow(game: game),
+            if (game.refereeTeam?.name != null) ...[
+              const SizedBox(height: 8.0),
+              _RefereeRow(refereeTeamName: game.refereeTeam!.name!),
+            ],
             if (canReport) ...[
               const SizedBox(height: 8.0),
               const Divider(height: 1),
@@ -167,6 +171,41 @@ class _TeamColumn extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _RefereeRow extends StatelessWidget {
+  const _RefereeRow({required this.refereeTeamName});
+
+  final String refereeTeamName;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final mutedStyle = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return Center(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.sports,
+            size: 14.0,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 4.0),
+          Flexible(
+            child: Text(
+              "Dommer: $refereeTeamName",
+              style: mutedStyle,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

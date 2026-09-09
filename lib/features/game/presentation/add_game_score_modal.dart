@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:science_cup_app/features/game/application/game_result_notifier.dart';
 import 'package:science_cup_app/features/game/data/models/game_summary.dart';
+import 'package:science_cup_app/features/permissions/application/user_permissions_notifier.dart';
 import 'package:science_cup_app/shared/presentation/modals/create_entity_modal.dart';
+import 'package:science_cup_app/shared/presentation/widgets/confirmation_dialog/confirmation_dialog.dart';
+import 'package:science_cup_app/shared/presentation/widgets/confirmation_dialog/confirmation_fields.dart';
 
 class AddGameResultModal extends ConsumerWidget {
   const AddGameResultModal({super.key, required this.game});
@@ -13,6 +16,8 @@ class AddGameResultModal extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final notifier = ref.read(gameResultProvider(game.id).notifier);
     final state = ref.watch(gameResultProvider(game.id));
+    final isAdmin =
+        ref.watch(userPermissionsProvider).value?.isAdmin == true;
 
     if (state.isInitialLoading) {
       return Column(
@@ -27,6 +32,9 @@ class AddGameResultModal extends ConsumerWidget {
         ],
       );
     }
+
+    final hasReportedResult = state.homeScore != null && state.awayScore != null;
+
     return CreateEntityModal(
       title: 'Indberet resultat',
       fields: [
@@ -39,8 +47,7 @@ class AddGameResultModal extends ConsumerWidget {
           onlyNumbers: true,
           initialValue: state.homeScore?.toString(),
           onChanged: (value) {
-            final score = int.tryParse(value) ?? 0;
-            notifier.setHomeScore(score);
+            notifier.setHomeScore(value.isEmpty ? null : int.tryParse(value));
           },
         ),
         TextFieldConfig(
@@ -49,10 +56,43 @@ class AddGameResultModal extends ConsumerWidget {
           onlyNumbers: true,
           initialValue: state.awayScore?.toString(),
           onChanged: (value) {
-            final score = int.tryParse(value) ?? 0;
-            notifier.setAwayScore(score);
+            notifier.setAwayScore(value.isEmpty ? null : int.tryParse(value));
           },
         ),
+        if (isAdmin && hasReportedResult)
+          WidgetFieldConfig(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () async {
+                  final confirmed =
+                      await showDialog<bool>(
+                        context: context,
+                        builder: (context) => ConfirmationDialog(
+                          confirmationFields: ConfirmationFields(
+                            title: "Ryd resultat",
+                            content:
+                                "Er du sikker på at du vil slette det indberettede resultat? Kampen vil herefter fremstå uden resultat.",
+                            confirmButtonText: "Ryd",
+                          ),
+                        ),
+                      ) ??
+                      false;
+                  if (!confirmed) return;
+
+                  await notifier.clearResult();
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Resultat ryddet')),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.delete_outline, size: 18.0),
+                label: const Text("Ryd resultat"),
+              ),
+            ),
+          ),
       ],
       onSubmit: (_) async {
         debugPrint(

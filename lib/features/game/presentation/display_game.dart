@@ -313,30 +313,23 @@ class _ScoreBox extends StatelessWidget {
     final hasScore = game.homeScore != null && game.awayScore != null;
     final isLive = game.status == GameStatus.playing;
 
-    Widget content;
-    if (hasScore) {
-      content = Text(
-        "${game.homeScore} - ${game.awayScore}",
-        style: theme.textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.bold,
-          color: isLive ? Colors.red : theme.colorScheme.onSurface,
-        ),
-      );
-    } else if (game.startDate != null) {
-      content = Text(
-        DateFormat('HH:mm').format(game.startDate!),
-        style: theme.textTheme.titleMedium?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      );
-    } else {
-      content = Text(
-        "vs",
-        style: theme.textTheme.titleMedium?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      );
-    }
+    // Kickoff-tidspunktet vises allerede i info-rækken øverst på kortet, så
+    // her viser vi kun selve resultatet — eller en streg, hvis der endnu
+    // ikke er indberettet noget resultat.
+    final content = hasScore
+        ? Text(
+            "${game.homeScore} - ${game.awayScore}",
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isLive ? Colors.red : theme.colorScheme.onSurface,
+            ),
+          )
+        : Text(
+            "-",
+            style: theme.textTheme.titleLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          );
 
     return Container(
       constraints: const BoxConstraints(minWidth: 56.0),

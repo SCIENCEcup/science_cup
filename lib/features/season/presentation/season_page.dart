@@ -14,7 +14,7 @@ import '../../auth/application/auth_notifier.dart';
 import '../../game/presentation/games_view.dart';
 import '../application/season/season_notifier.dart';
 
-class SeasonPage extends ConsumerWidget {
+class SeasonPage extends ConsumerStatefulWidget {
   const SeasonPage({
     super.key,
     required this.seasonId,
@@ -25,11 +25,35 @@ class SeasonPage extends ConsumerWidget {
   final SeasonTabs activeTab;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SeasonPage> createState() => _SeasonPageState();
+}
+
+class _SeasonPageState extends ConsumerState<SeasonPage> {
+  // Kampene for i dag er det mest relevante udgangspunkt, når man åbner
+  // siden, så datofilteret starter valgt på dags dato i stedet for "Alle".
+  DateTime? _selectedGameDate = _startOfToday();
+
+  // Som standard vises kampe for den valgte dato. Slår man "alle kampe"
+  // til, vises hele sæsonens kampe i stedet, med hold-/gruppefiltre.
+  bool _showAllGames = false;
+
+  @override
+  void didUpdateWidget(covariant SeasonPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Datofilteret hører til den enkelte sæsons kampe, så det giver ikke
+    // mening at bevare det, hvis brugeren skifter sæson.
+    if (oldWidget.seasonId != widget.seasonId) {
+      _selectedGameDate = _startOfToday();
+      _showAllGames = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final profileRole = ref.read(authProvider).profileRole;
     final availableTabs = SeasonTabs.availableTabsForRole(profileRole);
     final seasonsState = ref.watch(seasonsProvider);
-    final selectedIndex = activeTab.index;
+    final selectedIndex = widget.activeTab.index;
 
     // Vi pakker staten ud på øverste niveau for hele skærmen
     return seasonsState.when(
@@ -41,112 +65,113 @@ class SeasonPage extends ConsumerWidget {
 
         // Find den aktive sæson ud fra URL'ens seasonId
         final currentSeason = seasons.firstWhere(
-          (s) => s.id == seasonId,
+          (s) => s.id == widget.seasonId,
           orElse: () => seasons.first,
         );
 
-        return DefaultTabController(
-          length: availableTabs.length,
-          initialIndex: selectedIndex,
-          child: Scaffold(
-            appBar: AppBar(
-              leading: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: CircleAvatar(child: Icon(Icons.sports_soccer)),
+        return Scaffold(
+          appBar: AppBar(
+            leading: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: CircleAvatar(child: Icon(Icons.sports_soccer)),
+            ),
+            title: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: DropdownFlutter<Season>.search(
+                initialItem: currentSeason,
+                items: seasons,
+                decoration: CustomDropdownDecoration(
+                  closedFillColor: Colors.transparent,
+                ),
+                listItemBuilder: (context, season, _, _) =>
+                    Text(season.name ?? "Ingen navn"),
+                headerBuilder: (context, season, _) =>
+                    Text(season.name ?? "Ingen navn"),
+                onChanged: (newSeason) {
+                  if (newSeason?.id != null) {
+                    context.go('/seasons/${newSeason?.id}');
+                  }
+                },
               ),
-              title: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: DropdownFlutter<Season>.search(
-                  initialItem: currentSeason,
-                  items: seasons,
-                  decoration: CustomDropdownDecoration(
-                    closedFillColor: Colors.transparent,
+            ),
+            centerTitle: false,
+            actions: [
+              if (widget.activeTab == SeasonTabs.games)
+                IconButton(
+                  tooltip: _showAllGames
+                      ? "Vis efter dato"
+                      : "Vis alle kampe",
+                  icon: Icon(
+                    _showAllGames ? Icons.calendar_today : Icons.list,
                   ),
-                  listItemBuilder: (context, season, _, _) =>
-                      Text(season.name ?? "Ingen navn"),
-                  headerBuilder: (context, season, _) =>
-                      Text(season.name ?? "Ingen navn"),
-                  onChanged: (newSeason) {
-                    if (newSeason?.id != null) {
-                      context.go('/seasons/${newSeason?.id}');
-                    }
+                  onPressed: () =>
+                      setState(() => _showAllGames = !_showAllGames),
+                ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: AddSeasonButton(
+                  includeText: false,
+                ), // Tilføj sæson-knap uden tekst
+              ),
+              AuthProfileButton(),
+            ],
+            // Viser datoerne, hvor sæsonen faktisk har kampe, i bunden af
+            // app-baren — men kun på "Kampe"-fanen, og kun når man ikke er
+            // i "alle kampe"-visningen.
+            bottom: widget.activeTab == SeasonTabs.games && !_showAllGames
+                ? GameDateBar(
+                    seasonId: widget.seasonId,
+                    selectedDate: _selectedGameDate,
+                    onDateChanged: (date) =>
+                        setState(() => _selectedGameDate = date),
+                  )
+                : null,
+          ),
+          body: RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(teamProvider(widget.seasonId));
+            },
+            child: ConstrainedBox(
+              // Udvider siden så den altid fylder hele skærmen, også når indholdet er lidt
+              constraints: BoxConstraints(
+                minHeight: MediaQuery.of(context).size.height - kToolbarHeight,
+              ),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: switch (widget.activeTab) {
+                    SeasonTabs.games => GamesView(
+                      showAllGames: _showAllGames,
+                      selectedDate: _selectedGameDate,
+                      onDateChanged: (date) =>
+                          setState(() => _selectedGameDate = date),
+                    ),
+                    SeasonTabs.standings => const AllStandingsView(),
+                    SeasonTabs.admin => const AdminSeasonView(),
                   },
                 ),
               ),
-              centerTitle: false,
-              actions: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                  child: AddSeasonButton(
-                    includeText: false,
-                  ), // Tilføj sæson-knap uden tekst
-                ),
-                AuthProfileButton(),
-              ],
             ),
-            body: RefreshIndicator(
-              onRefresh: () async {
-                ref.invalidate(teamProvider(seasonId));
-              },
-              child: ConstrainedBox(
-                // Udvider siden så den altid fylder hele skærmen, også når indholdet er lidt
-                constraints: BoxConstraints(
-                  minHeight:
-                      MediaQuery.of(context).size.height - kToolbarHeight,
-                ),
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(
-                          spacing: 5,
-                          children: List.generate(availableTabs.length, (
-                            index,
-                          ) {
-                            final indexTab = availableTabs[index];
-                            return ChoiceChip(
-                              showCheckmark: false,
-                              avatar: switch (indexTab) {
-                                SeasonTabs.games => const Icon(
-                                  Icons.calendar_today_outlined,
-                                ),
-                                SeasonTabs.standings => const Icon(
-                                  Icons.leaderboard_outlined,
-                                ),
-                                SeasonTabs.admin => const Icon(
-                                  Icons.admin_panel_settings_outlined,
-                                ),
-                              },
-                              label: Text(indexTab.title),
-                              selected: index == selectedIndex,
-                              onSelected: (selected) {
-                                if (selected) {
-                                  context.go(
-                                    '/seasons/${currentSeason.id}/${indexTab.path}',
-                                  );
-                                }
-                              },
-                            );
-                          }),
-                        ),
-                        const SizedBox(height: 16),
-                        switch (activeTab) {
-                          SeasonTabs.games => const GamesView(),
-                          SeasonTabs.standings => const AllStandingsView(),
-                          SeasonTabs.admin => const AdminSeasonView(),
-                        },
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          ),
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: selectedIndex,
+            onDestinationSelected: (index) {
+              final tab = availableTabs[index];
+              context.go('/seasons/${currentSeason.id}/${tab.path}');
+            },
+            destinations: [
+              for (final tab in availableTabs)
+                NavigationDestination(icon: Icon(tab.icon), label: tab.title),
+            ],
           ),
         );
       },
     );
   }
+}
+
+DateTime _startOfToday() {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month, now.day);
 }

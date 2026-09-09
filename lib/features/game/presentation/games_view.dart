@@ -9,7 +9,19 @@ import 'package:science_cup_app/features/season/application/active_season/curren
 import 'package:science_cup_app/features/team/data/models/team_ref.dart';
 
 class GamesView extends ConsumerStatefulWidget {
-  const GamesView({super.key});
+  const GamesView({
+    super.key,
+    required this.showAllGames,
+    required this.selectedDate,
+    required this.onDateChanged,
+  });
+
+  /// Styres udefra (sæsonsidens app bar-knap). Når true vises alle kampe i
+  /// sæsonen (kun hold-/gruppefiltre er relevante); når false vises kun
+  /// kampene for [selectedDate] (styret af datovælgeren i app-barens bund).
+  final bool showAllGames;
+  final DateTime? selectedDate;
+  final ValueChanged<DateTime?> onDateChanged;
 
   @override
   ConsumerState<GamesView> createState() => _GamesViewState();
@@ -18,7 +30,18 @@ class GamesView extends ConsumerStatefulWidget {
 class _GamesViewState extends ConsumerState<GamesView> {
   TeamRef? _teamFilter;
   GroupRef? _groupFilter;
-  DateTime? _dateFilter;
+
+  @override
+  void didUpdateWidget(covariant GamesView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Hold-/gruppefiltre er kun relevante i "alle kampe"-visningen, så de
+    // ryddes, når man forlader den — ellers ville de ligge og filtrere i
+    // baggrunden, næste gang man slår dem til igen.
+    if (oldWidget.showAllGames && !widget.showAllGames) {
+      _teamFilter = null;
+      _groupFilter = null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,10 +60,10 @@ class _GamesViewState extends ConsumerState<GamesView> {
 
         final teams = _distinctTeams(games);
         final groups = _distinctGroups(games);
-        final gameDates = _distinctDates(games);
 
-        // Nulstil filtre, der ikke længere matcher noget i det hentede data
-        // (fx efter sæsonskift eller hvis en kamp er blevet slettet/flyttet).
+        // Nulstil hold-/gruppefiltre, der ikke længere matcher noget i det
+        // hentede data (fx efter sæsonskift eller hvis en kamp er blevet
+        // slettet/flyttet).
         if (_teamFilter != null && !teams.any((t) => t.id == _teamFilter!.id)) {
           _teamFilter = null;
         }
@@ -48,54 +71,46 @@ class _GamesViewState extends ConsumerState<GamesView> {
             !groups.any((g) => g.id == _groupFilter!.id)) {
           _groupFilter = null;
         }
-        if (_dateFilter != null &&
-            !gameDates.any((d) => _isSameDate(d, _dateFilter!))) {
-          _dateFilter = null;
-        }
 
         final filteredGames = games.where((game) {
-          if (_teamFilter != null &&
-              game.homeTeam?.id != _teamFilter!.id &&
-              game.awayTeam?.id != _teamFilter!.id) {
-            return false;
+          if (widget.showAllGames) {
+            if (_teamFilter != null &&
+                game.homeTeam?.id != _teamFilter!.id &&
+                game.awayTeam?.id != _teamFilter!.id) {
+              return false;
+            }
+            if (_groupFilter != null && game.group?.id != _groupFilter!.id) {
+              return false;
+            }
+            return true;
           }
-          if (_groupFilter != null && game.group?.id != _groupFilter!.id) {
-            return false;
-          }
-          if (_dateFilter != null &&
-              (game.startDate == null ||
-                  !_isSameDate(game.startDate!, _dateFilter!))) {
-            return false;
-          }
-          return true;
+          return widget.selectedDate != null &&
+              game.startDate != null &&
+              _isSameDate(game.startDate!, widget.selectedDate!);
         }).toList();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _GameFilters(
-              teams: teams,
-              groups: groups,
-              gameDates: gameDates,
-              selectedTeam: _teamFilter,
-              selectedGroup: _groupFilter,
-              selectedDate: _dateFilter,
-              onTeamChanged: (team) => setState(() => _teamFilter = team),
-              onGroupChanged: (group) => setState(() => _groupFilter = group),
-              onDateChanged: (date) => setState(() => _dateFilter = date),
-              onClearAll: () => setState(() {
-                _teamFilter = null;
-                _groupFilter = null;
-                _dateFilter = null;
-              }),
-            ),
+            if (widget.showAllGames)
+              _GameFilters(
+                teams: teams,
+                groups: groups,
+                selectedTeam: _teamFilter,
+                selectedGroup: _groupFilter,
+                onTeamChanged: (team) => setState(() => _teamFilter = team),
+                onGroupChanged: (group) =>
+                    setState(() => _groupFilter = group),
+                onClearAll: () => setState(() {
+                  _teamFilter = null;
+                  _groupFilter = null;
+                }),
+              ),
             const SizedBox(height: 8.0),
             if (filteredGames.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24.0),
-                child: Center(
-                  child: Text("Ingen kampe matcher de valgte filtre"),
-                ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24.0),
+                child: Center(child: Text(_emptyStateMessage())),
               )
             else
               ...filteredGames.map((game) => DisplayGame(game: game)),
@@ -105,6 +120,13 @@ class _GamesViewState extends ConsumerState<GamesView> {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stackTrace) => Center(child: Text("Fejl: $error")),
     );
+  }
+
+  String _emptyStateMessage() {
+    if (!widget.showAllGames) return "Ingen kampe denne dag";
+    final hasActiveFilter = _teamFilter != null || _groupFilter != null;
+    if (hasActiveFilter) return "Ingen kampe matcher de valgte filtre";
+    return "Ingen kampe fundet";
   }
 
   List<TeamRef> _distinctTeams(List<GameSummary> games) {
@@ -127,51 +149,44 @@ class _GamesViewState extends ConsumerState<GamesView> {
       ..sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
     return groups;
   }
-
-  List<DateTime> _distinctDates(List<GameSummary> games) {
-    final dates = <DateTime>{};
-    for (final game in games) {
-      final start = game.startDate;
-      if (start != null) {
-        dates.add(DateTime(start.year, start.month, start.day));
-      }
-    }
-    return dates.toList()..sort();
-  }
-
-  bool _isSameDate(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
 }
+
+List<DateTime> _distinctGameDates(List<GameSummary> games) {
+  final dates = <DateTime>{};
+  for (final game in games) {
+    final start = game.startDate;
+    if (start != null) {
+      dates.add(DateTime(start.year, start.month, start.day));
+    }
+  }
+  return dates.toList()..sort();
+}
+
+bool _isSameDate(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
 
 class _GameFilters extends StatelessWidget {
   const _GameFilters({
     required this.teams,
     required this.groups,
-    required this.gameDates,
     required this.selectedTeam,
     required this.selectedGroup,
-    required this.selectedDate,
     required this.onTeamChanged,
     required this.onGroupChanged,
-    required this.onDateChanged,
     required this.onClearAll,
   });
 
   final List<TeamRef> teams;
   final List<GroupRef> groups;
-  final List<DateTime> gameDates;
 
   final TeamRef? selectedTeam;
   final GroupRef? selectedGroup;
-  final DateTime? selectedDate;
 
   final ValueChanged<TeamRef?> onTeamChanged;
   final ValueChanged<GroupRef?> onGroupChanged;
-  final ValueChanged<DateTime?> onDateChanged;
   final VoidCallback onClearAll;
 
-  bool get _hasActiveFilter =>
-      selectedTeam != null || selectedGroup != null || selectedDate != null;
+  bool get _hasActiveFilter => selectedTeam != null || selectedGroup != null;
 
   @override
   Widget build(BuildContext context) {
@@ -196,7 +211,6 @@ class _GameFilters extends StatelessWidget {
           itemLabel: (group) => group.name ?? "Ukendt gruppe",
           onChanged: onGroupChanged,
         ),
-        if (gameDates.isNotEmpty) _buildDateFilter(context),
         if (_hasActiveFilter)
           ActionChip(
             avatar: const Icon(Icons.filter_alt_off, size: 18.0),
@@ -242,37 +256,205 @@ class _GameFilters extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildDateFilter(BuildContext context) {
-    final label = selectedDate == null
-        ? "Alle datoer"
-        : DateFormat('d. MMM', 'da_DK').format(selectedDate!);
+/// Horisontal datovælger til app-barens `bottom:`, der viser de datoer hvor
+/// sæsonen faktisk har kampe — plus dagens dato som fast anker, selvom den
+/// ikke selv har kampe — ligesom "fixtures"-kalenderen i andre fodboldapps
+/// (Flashscore, OneFootball m.fl.). Tidligere datoer ligger til venstre,
+/// kommende til højre, og stripet centreres automatisk omkring den valgte
+/// (eller aktuelle) dato, så begge retninger er lette at nå.
+class GameDateBar extends ConsumerStatefulWidget
+    implements PreferredSizeWidget {
+  const GameDateBar({
+    super.key,
+    required this.seasonId,
+    required this.selectedDate,
+    required this.onDateChanged,
+  });
 
-    return InputChip(
-      avatar: const Icon(Icons.event, size: 18.0),
-      label: Text(label),
-      onPressed: () async {
-        final firstDate = gameDates.first;
-        final lastDate = gameDates.last;
-        final picked = await showDatePicker(
-          context: context,
-          initialDate: selectedDate ?? firstDate,
-          firstDate: firstDate,
-          lastDate: lastDate,
-          helpText: "Vælg dato",
-          cancelText: "Annuller",
-          confirmText: "Vælg",
-          selectableDayPredicate: (day) => gameDates.any(
-            (d) =>
-                d.year == day.year && d.month == day.month && d.day == day.day,
+  final int seasonId;
+  final DateTime? selectedDate;
+  final ValueChanged<DateTime?> onDateChanged;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(56.0);
+
+  @override
+  ConsumerState<GameDateBar> createState() => _GameDateBarState();
+}
+
+class _GameDateBarState extends ConsumerState<GameDateBar> {
+  final Map<DateTime, GlobalKey> _chipKeys = {};
+  bool _hasCenteredInitially = false;
+
+  @override
+  void didUpdateWidget(covariant GameDateBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.seasonId != widget.seasonId) {
+      _hasCenteredInitially = false;
+      _chipKeys.clear();
+    }
+  }
+
+  GlobalKey _keyFor(DateTime date) =>
+      _chipKeys.putIfAbsent(date, () => GlobalKey());
+
+  void _centerOn(DateTime? date, {bool animate = false}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Slås op først når frame'et er bygget (ikke ved kald-tidspunktet) —
+      // ellers er chip'en for den valgte dato ofte ikke nået at blive
+      // bygget af ListView'et endnu, og nøglen findes derfor ikke.
+      final key = date == null ? null : _chipKeys[date];
+      final chipContext = key?.currentContext;
+      if (chipContext == null) return;
+      Scrollable.ensureVisible(
+        chipContext,
+        alignment: 0.5,
+        duration: animate ? const Duration(milliseconds: 250) : Duration.zero,
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final gamesAsync = ref.watch(gamesProvider(widget.seasonId));
+
+    if (gamesAsync.isLoading && !gamesAsync.hasValue) {
+      return SizedBox(height: widget.preferredSize.height);
+    }
+    if (gamesAsync.hasError) {
+      return SizedBox(height: widget.preferredSize.height);
+    }
+
+    final dates = _distinctGameDates(gamesAsync.value ?? const []);
+
+    // Dagens dato er altid med som anker i stripet, selvom der ikke er
+    // kampe i dag — så kan man altid se, hvor "i dag" ligger, og nemt
+    // finde frem til den seneste dag med kampe (til venstre) eller den
+    // næste dag med kampe (til højre).
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (!dates.any((d) => _isSameDate(d, today))) {
+      dates.add(today);
+      dates.sort();
+    }
+
+    if (!_hasCenteredInitially) {
+      _hasCenteredInitially = true;
+      _centerOn(widget.selectedDate ?? today);
+    }
+
+    return SizedBox(
+      height: widget.preferredSize.height,
+      child: ListView.separated(
+        // Bygger alle chips med det samme (i stedet for kun dem der er
+        // synlige), så Scrollable.ensureVisible kan finde og centrere en
+        // chip, selvom den ligger langt uden for det oprindelige view.
+        cacheExtent: 4000.0,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+        itemCount: dates.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 8.0),
+        itemBuilder: (context, index) {
+          final date = dates[index];
+          final selected =
+              widget.selectedDate != null &&
+              _isSameDate(date, widget.selectedDate!);
+          return _DateChip(
+            key: _keyFor(date),
+            label: _dateChipLabel(date),
+            selected: selected,
+            isToday: _isSameDate(date, today),
+            onTap: () {
+              widget.onDateChanged(date);
+              _centerOn(date, animate: true);
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+String _dateChipLabel(DateTime date) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final yesterday = today.subtract(const Duration(days: 1));
+  final tomorrow = today.add(const Duration(days: 1));
+
+  if (_isSameDate(date, today)) return "I dag";
+  if (_isSameDate(date, tomorrow)) return "I morgen";
+  if (_isSameDate(date, yesterday)) return "I går";
+
+  final weekday = DateFormat('EEE', 'da_DK').format(date);
+  final dayMonth = DateFormat('d. MMM', 'da_DK').format(date);
+  return "$weekday $dayMonth";
+}
+
+class _DateChip extends StatelessWidget {
+  const _DateChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    this.isToday = false,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final bool isToday;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final background = selected
+        ? theme.colorScheme.primaryContainer
+        : Colors.transparent;
+    final borderColor = selected
+        ? theme.colorScheme.primary
+        : theme.colorScheme.outlineVariant;
+    final foreground = selected
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.onSurfaceVariant;
+    final borderWidth = selected ? 1.5 : 1.0;
+
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(20.0),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20.0),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20.0),
+            // "I dag" får altid en fremhævet underkant, uanset om dagen er
+            // valgt eller ej, så man hurtigt kan se, hvor "i dag" ligger i
+            // stripet.
+            border: Border(
+              top: BorderSide(color: borderColor, width: borderWidth),
+              left: BorderSide(color: borderColor, width: borderWidth),
+              right: BorderSide(color: borderColor, width: borderWidth),
+              bottom: BorderSide(
+                color: isToday ? theme.colorScheme.primary : borderColor,
+                width: isToday ? 3.0 : borderWidth,
+              ),
+            ),
           ),
-        );
-        if (picked != null) {
-          onDateChanged(picked);
-        }
-      },
-      onDeleted: selectedDate != null ? () => onDateChanged(null) : null,
-      deleteIcon: const Icon(Icons.close, size: 16.0),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: foreground,
+              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

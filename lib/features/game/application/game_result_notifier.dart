@@ -57,8 +57,25 @@ class GameResultNotifier extends _$GameResultNotifier {
     return gameResultState;
   }
 
-  void setHomeScore(int score) => state = state.copyWith(homeScore: score);
-  void setAwayScore(int score) => state = state.copyWith(awayScore: score);
+  // copyWith kan ikke nulstille et felt til null (dens `??`-mønster
+  // beholder den gamle værdi), så scoren sættes direkte på en ny state i
+  // stedet — ellers ville et ryddet felt aldrig kunne gemmes som "intet
+  // resultat" igen.
+  void setHomeScore(int? score) => state = GameResultState(
+    homeScore: score,
+    awayScore: state.awayScore,
+    isSubmitting: state.isSubmitting,
+    errorMessage: state.errorMessage,
+    isInitialLoading: state.isInitialLoading,
+  );
+
+  void setAwayScore(int? score) => state = GameResultState(
+    homeScore: state.homeScore,
+    awayScore: score,
+    isSubmitting: state.isSubmitting,
+    errorMessage: state.errorMessage,
+    isInitialLoading: state.isInitialLoading,
+  );
 
   Future<void> submit() async {
     state = state.copyWith(isSubmitting: true, errorMessage: null);
@@ -82,5 +99,18 @@ class GameResultNotifier extends _$GameResultNotifier {
     } finally {
       state = state.copyWith(isSubmitting: false);
     }
+  }
+
+  /// Rydder et allerede indberettet resultat, så kampen igen står uden
+  /// resultat (i stedet for fx 0-0).
+  Future<void> clearResult() async {
+    state = GameResultState(
+      homeScore: null,
+      awayScore: null,
+      isSubmitting: state.isSubmitting,
+      errorMessage: null,
+      isInitialLoading: state.isInitialLoading,
+    );
+    await submit();
   }
 }

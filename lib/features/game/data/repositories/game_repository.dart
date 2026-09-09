@@ -102,13 +102,15 @@ class GameRepository {
     required int? awayScore,
   }) async {
     try {
+      final hasResult = homeScore != null && awayScore != null;
       await _supabase
           .from('games')
           .update({
             'home_score': homeScore,
             'away_score': awayScore,
-            'status':
-                'completed', // Assuming you want to mark the game as completed
+            // Hvis resultatet ryddes (begge scorer sat til null igen),
+            // skal kampen ikke længere fremstå som afsluttet.
+            'status': hasResult ? 'completed' : 'ready',
           })
           .eq('id', gameId);
     } catch (e) {

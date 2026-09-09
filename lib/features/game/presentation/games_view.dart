@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:science_cup_app/features/game/application/games_notifier.dart';
+import 'package:science_cup_app/features/game/data/enums/game_enums.dart';
 import 'package:science_cup_app/features/game/data/models/game_summary.dart';
 import 'package:science_cup_app/features/game/presentation/display_game.dart';
 import 'package:science_cup_app/features/group/data/models/group_ref.dart';
@@ -72,6 +73,8 @@ class _GamesViewState extends ConsumerState<GamesView> {
           _groupFilter = null;
         }
 
+        final placeholders = knockoutPlaceholders(games);
+
         final filteredGames = games.where((game) {
           if (widget.showAllGames) {
             if (_teamFilter != null &&
@@ -99,8 +102,7 @@ class _GamesViewState extends ConsumerState<GamesView> {
                 selectedTeam: _teamFilter,
                 selectedGroup: _groupFilter,
                 onTeamChanged: (team) => setState(() => _teamFilter = team),
-                onGroupChanged: (group) =>
-                    setState(() => _groupFilter = group),
+                onGroupChanged: (group) => setState(() => _groupFilter = group),
                 onClearAll: () => setState(() {
                   _teamFilter = null;
                   _groupFilter = null;
@@ -113,7 +115,13 @@ class _GamesViewState extends ConsumerState<GamesView> {
                 child: Center(child: Text(_emptyStateMessage())),
               )
             else
-              ...filteredGames.map((game) => DisplayGame(game: game)),
+              ...filteredGames.map(
+                (game) => DisplayGame(
+                  game: game,
+                  homePlaceholder: placeholders[game.id]?[GameSlot.home],
+                  awayPlaceholder: placeholders[game.id]?[GameSlot.away],
+                ),
+              ),
           ],
         );
       },
@@ -164,6 +172,25 @@ List<DateTime> _distinctGameDates(List<GameSummary> games) {
 
 bool _isSameDate(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
+
+/// For hver slutspilskamp med et ledigt hjemme-/udehold, som en tidligere
+/// kamp i bracket'et peger videre til (`next_game_id`/`next_game_slot`),
+/// dannes en kort label om hvem der kommer til at stå på pladsen, fx
+/// "Vinder af kvartfinale" — så man kan se bracket'ets struktur, selvom
+/// de tidligere kampe ikke er spillet endnu.
+Map<int, Map<GameSlot, String>> knockoutPlaceholders(List<GameSummary> games) {
+  final placeholders = <int, Map<GameSlot, String>>{};
+  for (final feeder in games) {
+    final nextGameId = feeder.nextGameId;
+    final nextGameSlot = feeder.nextGameSlot;
+    if (nextGameId == null || nextGameSlot == null) continue;
+
+    final stage = knockoutStageName(feeder.roundNumber ?? 0).toLowerCase();
+    placeholders.putIfAbsent(nextGameId, () => {})[nextGameSlot] =
+        "Vinder af $stage";
+  }
+  return placeholders;
+}
 
 class _GameFilters extends StatelessWidget {
   const _GameFilters({

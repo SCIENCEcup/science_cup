@@ -8,6 +8,16 @@ import 'package:science_cup_app/features/game/data/models/write_game_request.dar
 
 part 'game_form_notifier.g.dart';
 
+/// Sentinel, der lader `copyWith` skelne mellem "feltet blev ikke angivet"
+/// og "feltet skal eksplicit ryddes til null" — almindeligt `??`-mønster
+/// kan ikke nulstille et felt, fordi `null ?? gammelVærdi` altid bliver
+/// den gamle værdi.
+class _Undefined {
+  const _Undefined();
+}
+
+const _undefined = _Undefined();
+
 // State-klassen
 class GameFormState {
   final int seasonId;
@@ -19,6 +29,12 @@ class GameFormState {
   final int? refereeTeamId;
   final DateTime? startDate;
   final TimeOfDay? startTime;
+
+  /// Kun relevant, når man opretter et nyt slutspil (dvs. [id] er null og
+  /// [gameStageType] er `round`): antal runder i bracket'et (1 = finale,
+  /// 2 = semifinale + finale, osv.).
+  final int roundCount;
+
   final bool isSubmitting;
   final String? errorMessage;
 
@@ -32,35 +48,52 @@ class GameFormState {
     this.refereeTeamId,
     this.startDate,
     this.startTime,
+    this.roundCount = 1,
     this.isSubmitting = false,
     this.errorMessage,
   });
 
   GameFormState copyWith({
     int? seasonId,
-    int? id,
+    Object? id = _undefined,
     GameStageType? gameStageType,
-    int? groupId,
-    int? homeTeamId,
-    int? awayTeamId,
-    int? refereeTeamId,
-    DateTime? startDate,
-    TimeOfDay? startTime,
+    Object? groupId = _undefined,
+    Object? homeTeamId = _undefined,
+    Object? awayTeamId = _undefined,
+    Object? refereeTeamId = _undefined,
+    Object? startDate = _undefined,
+    Object? startTime = _undefined,
+    int? roundCount,
     bool? isSubmitting,
-    String? errorMessage,
+    Object? errorMessage = _undefined,
   }) {
     return GameFormState(
       seasonId: seasonId ?? this.seasonId,
-      id: id ?? this.id,
+      id: identical(id, _undefined) ? this.id : id as int?,
       gameStageType: gameStageType ?? this.gameStageType,
-      groupId: groupId ?? this.groupId,
-      homeTeamId: homeTeamId ?? this.homeTeamId,
-      awayTeamId: awayTeamId ?? this.awayTeamId,
-      refereeTeamId: refereeTeamId ?? this.refereeTeamId,
-      startDate: startDate ?? this.startDate,
-      startTime: startTime ?? this.startTime,
+      groupId: identical(groupId, _undefined)
+          ? this.groupId
+          : groupId as int?,
+      homeTeamId: identical(homeTeamId, _undefined)
+          ? this.homeTeamId
+          : homeTeamId as int?,
+      awayTeamId: identical(awayTeamId, _undefined)
+          ? this.awayTeamId
+          : awayTeamId as int?,
+      refereeTeamId: identical(refereeTeamId, _undefined)
+          ? this.refereeTeamId
+          : refereeTeamId as int?,
+      startDate: identical(startDate, _undefined)
+          ? this.startDate
+          : startDate as DateTime?,
+      startTime: identical(startTime, _undefined)
+          ? this.startTime
+          : startTime as TimeOfDay?,
+      roundCount: roundCount ?? this.roundCount,
       isSubmitting: isSubmitting ?? this.isSubmitting,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage: identical(errorMessage, _undefined)
+          ? this.errorMessage
+          : errorMessage as String?,
     );
   }
 }
@@ -97,9 +130,11 @@ class GameFormNotifier extends _$GameFormNotifier {
     awayTeamId: null,
   );
 
-  void setHomeTeamId(int? teamId) => state = state.copyWith(homeTeamId: teamId);
+  void setHomeTeamId(int? teamId) =>
+      state = state.copyWith(homeTeamId: teamId);
 
-  void setAwayTeamId(int? teamId) => state = state.copyWith(awayTeamId: teamId);
+  void setAwayTeamId(int? teamId) =>
+      state = state.copyWith(awayTeamId: teamId);
 
   void setRefereeTeamId(int? teamId) =>
       state = state.copyWith(refereeTeamId: teamId);
@@ -107,6 +142,8 @@ class GameFormNotifier extends _$GameFormNotifier {
   void setStartDate(DateTime? date) => state = state.copyWith(startDate: date);
 
   void setStartTime(TimeOfDay? time) => state = state.copyWith(startTime: time);
+
+  void setRoundCount(int count) => state = state.copyWith(roundCount: count);
 
   Future<void> submit() async {
     state = state.copyWith(isSubmitting: true, errorMessage: null);
@@ -141,6 +178,26 @@ class GameFormNotifier extends _$GameFormNotifier {
       } else {
         await repo.updateGame(request);
       }
+    } catch (e) {
+      state = state.copyWith(errorMessage: e.toString(), isSubmitting: false);
+      return;
+    }
+
+    state = state.copyWith(isSubmitting: false);
+    ref.invalidate(gamesProvider(state.seasonId));
+  }
+
+  /// Opretter et helt nyt slutspil (bracket) ud fra [GameFormState.roundCount]
+  /// i stedet for én enkelt kamp. Kun relevant når man opretter (ikke
+  /// redigerer) og har valgt slutspil som kamptype.
+  Future<void> submitPlayoffBracket() async {
+    state = state.copyWith(isSubmitting: true, errorMessage: null);
+    try {
+      final repo = ref.read(gameRepositoryProvider);
+      await repo.createPlayoffBracket(
+        seasonId: state.seasonId,
+        roundCount: state.roundCount,
+      );
     } catch (e) {
       state = state.copyWith(errorMessage: e.toString(), isSubmitting: false);
       return;

@@ -1,3 +1,4 @@
+import 'package:science_cup_app/features/game/data/enums/game_enums.dart';
 import 'package:science_cup_app/features/game/data/models/game.dart';
 import 'package:science_cup_app/features/game/data/models/game_summary.dart';
 import 'package:science_cup_app/features/game/data/models/write_game_request.dart';
@@ -18,6 +19,8 @@ class GameRepository {
         away_score,
         start_date,
         round_number,
+        next_game_id,
+        next_game_slot,
 
         home_team:home_team_id(id, name),
         away_team:away_team_id(id, name),
@@ -40,6 +43,8 @@ class GameRepository {
         away_score,
         start_date,
         round_number,
+        next_game_id,
+        next_game_slot,
 
         home_team:home_team_id(id, name),
         away_team:away_team_id(id, name),
@@ -85,6 +90,75 @@ class GameRepository {
       return Game.fromJson(response);
     } catch (e) {
       throw Exception('Kunne ikke opdatere kamp: $e');
+    }
+  }
+
+  /// Opretter et helt slutspil (single-elimination) for sæsonen ud fra
+  /// [roundCount] runder (1 = kun en finale, 2 = semifinale + finale, osv.).
+  ///
+  /// Kampene oprettes ét niveau ad gangen, startende med finalen (round 0),
+  /// da hver runde skal kende ID'et på den kamp, vinderen går videre til
+  /// (`next_game_id`). Kampene i den sidste (tidligste) runde er dem, admin
+  /// efterfølgende sætter hold på; resten udfyldes automatisk, efterhånden
+  /// som resultater indberettes.
+  Future<List<Game>> createPlayoffBracket({
+    required int seasonId,
+    required int roundCount,
+  }) async {
+    if (roundCount < 1) {
+      throw Exception('Et slutspil skal have mindst 1 runde.');
+    }
+
+    final allGames = <Game>[];
+    List<Game> previousRoundGames = [];
+
+    for (var round = 0; round < roundCount; round++) {
+      final gamesInRound = 1 << round; // 2^round
+      final currentRoundGames = <Game>[];
+
+      for (var i = 0; i < gamesInRound; i++) {
+        int? nextGameId;
+        GameSlot? nextGameSlot;
+        if (round > 0) {
+          final parent = previousRoundGames[i ~/ 2];
+          nextGameId = parent.id;
+          nextGameSlot = i.isEven ? GameSlot.home : GameSlot.away;
+        }
+
+        final created = await createGame(
+          WriteGameRequest(
+            seasonId: seasonId,
+            roundNumber: round,
+            nextGameId: nextGameId,
+            nextGameSlot: nextGameSlot,
+          ),
+        );
+        currentRoundGames.add(created);
+        allGames.add(created);
+      }
+
+      previousRoundGames = currentRoundGames;
+    }
+
+    return allGames;
+  }
+
+  /// Sætter det vindende hold i den kamp, en slutspilskamp peger videre
+  /// til (`next_game_id`/`next_game_slot`), så bracket'et automatisk
+  /// bygges videre, efterhånden som resultater indberettes.
+  Future<void> advanceWinner({
+    required int nextGameId,
+    required GameSlot slot,
+    required int teamId,
+  }) async {
+    try {
+      final column = slot == GameSlot.home ? 'home_team_id' : 'away_team_id';
+      await _supabase
+          .from('games')
+          .update({column: teamId})
+          .eq('id', nextGameId);
+    } catch (e) {
+      throw Exception('Kunne ikke fremrykke vinderhold: $e');
     }
   }
 

@@ -20,6 +20,10 @@ abstract class GameSummary with _$GameSummary {
     DateTime? startDate,
     int? roundNumber,
 
+    // Slutspil: hvilken kamp vinderen af denne kamp går videre til.
+    int? nextGameId,
+    GameSlot? nextGameSlot,
+
     TeamRef? homeTeam,
     TeamRef? awayTeam,
     TeamRef? refereeTeam,

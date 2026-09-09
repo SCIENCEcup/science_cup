@@ -3,6 +3,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:science_cup_app/features/game/application/game_provider.dart';
 import 'package:science_cup_app/features/game/application/game_repository_provider.dart';
 import 'package:science_cup_app/features/game/application/games_notifier.dart';
+import 'package:science_cup_app/features/game/data/enums/game_enums.dart';
 import 'package:science_cup_app/features/season/application/active_season/current_season_provider.dart';
 
 part 'game_result_notifier.g.dart';
@@ -14,12 +15,24 @@ class GameResultState {
   final String? errorMessage;
   final bool isInitialLoading;
 
+  // Slutspil: bruges til automatisk at fremrykke vinderholdet til den
+  // næste kamp i bracket'et, når resultatet indberettes. Ikke redigerbare
+  // via UI'et — sættes kun ud fra den indlæste kamp.
+  final int? homeTeamId;
+  final int? awayTeamId;
+  final int? nextGameId;
+  final GameSlot? nextGameSlot;
+
   const GameResultState({
     this.homeScore,
     this.awayScore,
     this.isSubmitting = false,
     this.errorMessage,
     this.isInitialLoading = true,
+    this.homeTeamId,
+    this.awayTeamId,
+    this.nextGameId,
+    this.nextGameSlot,
   });
 
   GameResultState copyWith({
@@ -27,7 +40,6 @@ class GameResultState {
     int? awayScore,
     bool? isSubmitting,
     String? errorMessage,
-    bool? submittedSuccessfully,
     bool? isInitialLoading,
   }) {
     return GameResultState(
@@ -35,8 +47,11 @@ class GameResultState {
       awayScore: awayScore ?? this.awayScore,
       isSubmitting: isSubmitting ?? this.isSubmitting,
       errorMessage: errorMessage ?? this.errorMessage,
-
       isInitialLoading: isInitialLoading ?? this.isInitialLoading,
+      homeTeamId: homeTeamId,
+      awayTeamId: awayTeamId,
+      nextGameId: nextGameId,
+      nextGameSlot: nextGameSlot,
     );
   }
 }
@@ -51,6 +66,10 @@ class GameResultNotifier extends _$GameResultNotifier {
         homeScore: game.homeScore,
         awayScore: game.awayScore,
         isInitialLoading: false,
+        homeTeamId: game.homeTeam?.id,
+        awayTeamId: game.awayTeam?.id,
+        nextGameId: game.nextGameId,
+        nextGameSlot: game.nextGameSlot,
       ),
       orElse: () => GameResultState(isInitialLoading: true),
     );
@@ -67,6 +86,10 @@ class GameResultNotifier extends _$GameResultNotifier {
     isSubmitting: state.isSubmitting,
     errorMessage: state.errorMessage,
     isInitialLoading: state.isInitialLoading,
+    homeTeamId: state.homeTeamId,
+    awayTeamId: state.awayTeamId,
+    nextGameId: state.nextGameId,
+    nextGameSlot: state.nextGameSlot,
   );
 
   void setAwayScore(int? score) => state = GameResultState(
@@ -75,18 +98,45 @@ class GameResultNotifier extends _$GameResultNotifier {
     isSubmitting: state.isSubmitting,
     errorMessage: state.errorMessage,
     isInitialLoading: state.isInitialLoading,
+    homeTeamId: state.homeTeamId,
+    awayTeamId: state.awayTeamId,
+    nextGameId: state.nextGameId,
+    nextGameSlot: state.nextGameSlot,
   );
 
   Future<void> submit() async {
     state = state.copyWith(isSubmitting: true, errorMessage: null);
     try {
-      await ref
-          .read(gameRepositoryProvider)
-          .reportGameResult(
-            gameId: gameId, // gameId er tilgængelig som parameter til build
-            homeScore: state.homeScore,
-            awayScore: state.awayScore,
+      final repo = ref.read(gameRepositoryProvider);
+      await repo.reportGameResult(
+        gameId: gameId, // gameId er tilgængelig som parameter til build
+        homeScore: state.homeScore,
+        awayScore: state.awayScore,
+      );
+
+      // Slutspil: fremryk automatisk vinderholdet til den næste kamp i
+      // bracket'et, hvis der er en, og resultatet ikke er uafgjort (hvilket
+      // ikke bør forekomme i et slutspil, men vi undgår at gætte et
+      // vinderhold, hvis det alligevel sker).
+      final homeScore = state.homeScore;
+      final awayScore = state.awayScore;
+      if (state.nextGameId != null &&
+          state.nextGameSlot != null &&
+          homeScore != null &&
+          awayScore != null &&
+          homeScore != awayScore) {
+        final winnerTeamId = homeScore > awayScore
+            ? state.homeTeamId
+            : state.awayTeamId;
+        if (winnerTeamId != null) {
+          await repo.advanceWinner(
+            nextGameId: state.nextGameId!,
+            slot: state.nextGameSlot!,
+            teamId: winnerTeamId,
           );
+          ref.invalidate(gameProvider(state.nextGameId!));
+        }
+      }
 
       // 2. Invalidér listen over kampe i den aktive sæson
       final seasonId = ref.read(currentSeasonProvider)?.id;
@@ -102,7 +152,9 @@ class GameResultNotifier extends _$GameResultNotifier {
   }
 
   /// Rydder et allerede indberettet resultat, så kampen igen står uden
-  /// resultat (i stedet for fx 0-0).
+  /// resultat (i stedet for fx 0-0). Bemærk: hvis vinderholdet allerede er
+  /// fremrykket til næste slutspilskamp, bliver den fremrykning ikke
+  /// automatisk fortrudt her.
   Future<void> clearResult() async {
     state = GameResultState(
       homeScore: null,
@@ -110,6 +162,10 @@ class GameResultNotifier extends _$GameResultNotifier {
       isSubmitting: state.isSubmitting,
       errorMessage: null,
       isInitialLoading: state.isInitialLoading,
+      homeTeamId: state.homeTeamId,
+      awayTeamId: state.awayTeamId,
+      nextGameId: state.nextGameId,
+      nextGameSlot: state.nextGameSlot,
     );
     await submit();
   }

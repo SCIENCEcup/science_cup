@@ -32,6 +32,9 @@ class AddEditGameModal extends ConsumerWidget {
     final teamsAsync = formState.groupId != null
         ? ref.watch(teamsByGroupProvider(formState.groupId!))
         : null;
+    // Slutspilskampe er ikke bundet til en gruppe, så holdvalget her sker
+    // blandt alle sæsonens hold i stedet for en enkelt gruppes.
+    final seasonTeamsAsync = ref.watch(seasonTeamsProvider(seasonId));
 
     return CreateEntityModal(
       title: game == null ? 'Opret kamp' : 'Rediger kamp',
@@ -147,9 +150,104 @@ class AddEditGameModal extends ConsumerWidget {
               error: (_, _) => const EmptyFieldConfig(),
             ),
         ],
+
+        // Slutspil: kun antal runder, hvis vi opretter et nyt slutspil —
+        // resten af bracket'et genereres automatisk. Redigerer man en
+        // allerede oprettet slutspilskamp, sættes i stedet hold/dato/dommer
+        // for netop den kamp; runde-nummeret er fastlagt af bracket'et og
+        // kan ikke ændres her.
+        if (formState.gameStageType == GameStageType.round && game == null)
+          SelectFieldConfig<int>(
+            key: 'roundCount',
+            label: 'Antal runder',
+            isClearable: false,
+            options: const [1, 2, 3, 4, 5],
+            optionLabel: (n) => knockoutRoundCountLabel(n),
+            initialValue: formState.roundCount,
+            onFieldSelected: (n) => notifier.setRoundCount(n),
+          ),
+
+        if (formState.gameStageType == GameStageType.round && game != null) ...[
+          seasonTeamsAsync.when(
+            data: (teams) {
+              final availableHome = teams
+                  .where((t) => t.id != formState.awayTeamId)
+                  .toList();
+              return SelectFieldConfig<Team?>(
+                key: 'homeTeam',
+                label: 'Hjemmehold',
+                isClearable: true,
+                options: availableHome,
+                optionLabel: (t) => t?.name ?? 'Vælg hold',
+                initialValue: availableHome.firstWhereOrNull(
+                  (t) => t.id == formState.homeTeamId,
+                ),
+                onFieldSelected: (t) => notifier.setHomeTeamId(t?.id),
+              );
+            },
+            loading: () => const EmptyFieldConfig(),
+            error: (_, _) => const EmptyFieldConfig(),
+          ),
+          seasonTeamsAsync.when(
+            data: (teams) {
+              final availableAway = teams
+                  .where((t) => t.id != formState.homeTeamId)
+                  .toList();
+              return SelectFieldConfig<Team?>(
+                key: 'awayTeam',
+                label: 'Udehold',
+                isClearable: true,
+                options: availableAway,
+                optionLabel: (t) => t?.name ?? 'Vælg hold',
+                initialValue: availableAway.firstWhereOrNull(
+                  (t) => t.id == formState.awayTeamId,
+                ),
+                onFieldSelected: (t) => notifier.setAwayTeamId(t?.id),
+              );
+            },
+            loading: () => const EmptyFieldConfig(),
+            error: (_, _) => const EmptyFieldConfig(),
+          ),
+          DateFieldConfig(
+            key: 'startDate',
+            label: 'Dato',
+            isClearable: true,
+            initialValue: formState.startDate,
+            onSubmit: (date) => notifier.setStartDate(date),
+          ),
+          TimeFieldConfig(
+            key: 'startTime',
+            label: 'Tid',
+            isClearable: true,
+            initialValue:
+                formState.startTime ?? const TimeOfDay(hour: 15, minute: 0),
+            onSubmit: (time) => notifier.setStartTime(time),
+          ),
+          seasonTeamsAsync.when(
+            data: (teams) => SelectFieldConfig<Team?>(
+              key: 'referee',
+              label: 'Dommer',
+              prefixIcon: const Icon(Icons.person),
+              options: teams,
+              optionLabel: (t) => t?.name ?? 'Ingen dommer',
+              initialValue: teams.firstWhereOrNull(
+                (t) => t.id == formState.refereeTeamId,
+              ),
+              onFieldSelected: (t) => notifier.setRefereeTeamId(t?.id),
+              createEntityWidget: const AddTeamModal(),
+            ),
+            loading: () => const EmptyFieldConfig(),
+            error: (_, _) => const EmptyFieldConfig(),
+          ),
+        ],
       ],
-      // Knappen "Gem" kalder nu blot notifier.submit() – ingen data fra UI
-      onSubmit: (_) => notifier.submit(),
+      onSubmit: (_) async {
+        if (game == null && formState.gameStageType == GameStageType.round) {
+          await notifier.submitPlayoffBracket();
+        } else {
+          await notifier.submit();
+        }
+      },
       // isLoading: formState.isSubmitting, // vis spinner på knap
     );
   }

@@ -17,9 +17,19 @@ import 'package:science_cup_app/shared/presentation/widgets/confirmation_dialog/
 import 'package:science_cup_app/shared/presentation/widgets/edit_delete_menu.dart';
 
 class DisplayGame extends ConsumerWidget {
-  const DisplayGame({super.key, required this.game});
+  const DisplayGame({
+    super.key,
+    required this.game,
+    this.homePlaceholder,
+    this.awayPlaceholder,
+  });
 
   final GameSummary game;
+
+  /// I et slutspil: hvem der kommer til at stå på hjemme-/udepladsen, når
+  /// den ikke er sat endnu (fx "Vinder af kvartfinale").
+  final String? homePlaceholder;
+  final String? awayPlaceholder;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -58,7 +68,11 @@ class DisplayGame extends ConsumerWidget {
                   : null,
             ),
             const SizedBox(height: 10.0),
-            _GameScoreRow(game: game),
+            _GameScoreRow(
+              game: game,
+              homePlaceholder: homePlaceholder,
+              awayPlaceholder: awayPlaceholder,
+            ),
             if (game.refereeTeam?.name != null) ...[
               const SizedBox(height: 8.0),
               _RefereeRow(refereeTeamName: game.refereeTeam!.name!),
@@ -112,11 +126,22 @@ class DisplayGame extends ConsumerWidget {
               final teamsAsync = groupId != null
                   ? ref.watch(teamsByGroupProvider(groupId))
                   : null;
+              // Slutspilskampe henter i stedet holdene blandt hele sæsonens
+              // hold (ikke gruppebundet), så den provider forvarmes også.
+              final seasonTeamsAsync =
+                  fullGame.gameStageType == GameStageType.round &&
+                      seasonId != null
+                  ? ref.watch(seasonTeamsProvider(seasonId))
+                  : null;
 
               final isLoading =
                   (groupsAsync?.isLoading ?? false) ||
-                  (teamsAsync?.isLoading ?? false);
-              final error = groupsAsync?.error ?? teamsAsync?.error;
+                  (teamsAsync?.isLoading ?? false) ||
+                  (seasonTeamsAsync?.isLoading ?? false);
+              final error =
+                  groupsAsync?.error ??
+                  teamsAsync?.error ??
+                  seasonTeamsAsync?.error;
 
               if (isLoading) {
                 return const Padding(
@@ -163,7 +188,7 @@ class _GameInfoRow extends StatelessWidget {
 
     final infoParts = <String>[
       if (game.group?.name != null) game.group!.name!,
-      if (game.roundNumber != null) "Runde ${game.roundNumber}",
+      if (game.roundNumber != null) knockoutStageName(game.roundNumber!),
     ];
 
     return Row(
@@ -223,44 +248,70 @@ class _StatusBadge extends StatelessWidget {
 }
 
 class _GameScoreRow extends StatelessWidget {
-  const _GameScoreRow({required this.game});
+  const _GameScoreRow({
+    required this.game,
+    this.homePlaceholder,
+    this.awayPlaceholder,
+  });
 
   final GameSummary game;
+  final String? homePlaceholder;
+  final String? awayPlaceholder;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: _TeamColumn(teamName: game.homeTeam?.name)),
+        Expanded(
+          child: _TeamColumn(
+            teamName: game.homeTeam?.name,
+            placeholder: homePlaceholder,
+          ),
+        ),
         _ScoreBox(game: game),
-        Expanded(child: _TeamColumn(teamName: game.awayTeam?.name)),
+        Expanded(
+          child: _TeamColumn(
+            teamName: game.awayTeam?.name,
+            placeholder: awayPlaceholder,
+          ),
+        ),
       ],
     );
   }
 }
 
 class _TeamColumn extends StatelessWidget {
-  const _TeamColumn({required this.teamName});
+  const _TeamColumn({required this.teamName, this.placeholder});
 
   final String? teamName;
+
+  /// I et slutspil: hvem der kommer til at stå på pladsen, hvis holdet
+  /// ikke er sat endnu (fx "Vinder af kvartfinale").
+  final String? placeholder;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final label = teamName ?? placeholder ?? "Ukendt hold";
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         TeamIcon(teamName: teamName ?? "?"),
         const SizedBox(height: 6.0),
         Text(
-          teamName ?? "Ukendt hold",
+          label,
           textAlign: TextAlign.center,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+          style: teamName != null
+              ? theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                )
+              : theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
         ),
       ],
     );

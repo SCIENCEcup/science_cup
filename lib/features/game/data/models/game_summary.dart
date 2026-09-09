@@ -8,6 +8,8 @@ part 'game_summary.g.dart';
 
 @freezed
 abstract class GameSummary with _$GameSummary {
+  const GameSummary._();
+
   @JsonSerializable(fieldRename: FieldRename.snake)
   const factory GameSummary({
     required int id,
@@ -33,4 +35,10 @@ abstract class GameSummary with _$GameSummary {
 
   factory GameSummary.fromJson(Map<String, dynamic> json) =>
       _$GameSummaryFromJson(json);
+
+  GameStageType? get gameStageType {
+    if (group != null) return GameStageType.group;
+    if (roundNumber != null) return GameStageType.round;
+    return null;
+  }
 }

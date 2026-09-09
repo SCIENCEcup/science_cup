@@ -31,6 +31,7 @@ class GamesView extends ConsumerStatefulWidget {
 class _GamesViewState extends ConsumerState<GamesView> {
   TeamRef? _teamFilter;
   GroupRef? _groupFilter;
+  GameStageType? _stageFilter;
 
   @override
   void didUpdateWidget(covariant GamesView oldWidget) {
@@ -59,8 +60,8 @@ class _GamesViewState extends ConsumerState<GamesView> {
           return const Center(child: Text("Ingen kampe fundet"));
         }
 
-        final teams = _distinctTeams(games);
-        final groups = _distinctGroups(games);
+        final teams = distinctTeams(games);
+        final groups = distinctGroups(games);
 
         // Nulstil hold-/gruppefiltre, der ikke længere matcher noget i det
         // hentede data (fx efter sæsonskift eller hvis en kamp er blevet
@@ -76,6 +77,9 @@ class _GamesViewState extends ConsumerState<GamesView> {
         final placeholders = knockoutPlaceholders(games);
 
         final filteredGames = games.where((game) {
+          if (_stageFilter != null && game.gameStageType != _stageFilter) {
+            return false;
+          }
           if (widget.showAllGames) {
             if (_teamFilter != null &&
                 game.homeTeam?.id != _teamFilter!.id &&
@@ -85,29 +89,46 @@ class _GamesViewState extends ConsumerState<GamesView> {
             if (_groupFilter != null && game.group?.id != _groupFilter!.id) {
               return false;
             }
+            if (widget.selectedDate != null &&
+                (game.startDate == null ||
+                    !isSameDate(game.startDate!, widget.selectedDate!))) {
+              return false;
+            }
             return true;
           }
           return widget.selectedDate != null &&
               game.startDate != null &&
-              _isSameDate(game.startDate!, widget.selectedDate!);
+              isSameDate(game.startDate!, widget.selectedDate!);
         }).toList();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (widget.showAllGames)
-              _GameFilters(
-                teams: teams,
-                groups: groups,
-                selectedTeam: _teamFilter,
-                selectedGroup: _groupFilter,
-                onTeamChanged: (team) => setState(() => _teamFilter = team),
-                onGroupChanged: (group) => setState(() => _groupFilter = group),
-                onClearAll: () => setState(() {
-                  _teamFilter = null;
-                  _groupFilter = null;
-                }),
-              ),
+            GameFilters(
+              teams: teams,
+              groups: groups,
+              // I "alle kampe"-visningen er der ingen dato-strip i app-baren
+              // at filtrere fra, så her tilbydes et datofilter i rækken i
+              // stedet. I dato-visningen styres datoen allerede af stripet,
+              // så her ville en ekstra dropdown bare være en duplikat.
+              dates: widget.showAllGames ? distinctGameDates(games) : null,
+              selectedTeam: _teamFilter,
+              selectedGroup: _groupFilter,
+              selectedDate: widget.selectedDate,
+              selectedStageType: _stageFilter,
+              showTeamGroupFilters: widget.showAllGames,
+              onTeamChanged: (team) => setState(() => _teamFilter = team),
+              onGroupChanged: (group) => setState(() => _groupFilter = group),
+              onDateChanged: widget.showAllGames ? widget.onDateChanged : null,
+              onStageTypeChanged: (stage) =>
+                  setState(() => _stageFilter = stage),
+              onClearAll: () => setState(() {
+                _teamFilter = null;
+                _groupFilter = null;
+                _stageFilter = null;
+                if (widget.showAllGames) widget.onDateChanged(null);
+              }),
+            ),
             const SizedBox(height: 8.0),
             if (filteredGames.isEmpty)
               Padding(
@@ -131,35 +152,43 @@ class _GamesViewState extends ConsumerState<GamesView> {
   }
 
   String _emptyStateMessage() {
-    if (!widget.showAllGames) return "Ingen kampe denne dag";
-    final hasActiveFilter = _teamFilter != null || _groupFilter != null;
+    if (!widget.showAllGames) {
+      return _stageFilter != null
+          ? "Ingen kampe matcher de valgte filtre"
+          : "Ingen kampe denne dag";
+    }
+    final hasActiveFilter =
+        _teamFilter != null ||
+        _groupFilter != null ||
+        _stageFilter != null ||
+        widget.selectedDate != null;
     if (hasActiveFilter) return "Ingen kampe matcher de valgte filtre";
     return "Ingen kampe fundet";
   }
-
-  List<TeamRef> _distinctTeams(List<GameSummary> games) {
-    final byId = <int, TeamRef>{};
-    for (final game in games) {
-      if (game.homeTeam != null) byId[game.homeTeam!.id] = game.homeTeam!;
-      if (game.awayTeam != null) byId[game.awayTeam!.id] = game.awayTeam!;
-    }
-    final teams = byId.values.toList()
-      ..sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
-    return teams;
-  }
-
-  List<GroupRef> _distinctGroups(List<GameSummary> games) {
-    final byId = <int, GroupRef>{};
-    for (final game in games) {
-      if (game.group != null) byId[game.group!.id] = game.group!;
-    }
-    final groups = byId.values.toList()
-      ..sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
-    return groups;
-  }
 }
 
-List<DateTime> _distinctGameDates(List<GameSummary> games) {
+List<TeamRef> distinctTeams(List<GameSummary> games) {
+  final byId = <int, TeamRef>{};
+  for (final game in games) {
+    if (game.homeTeam != null) byId[game.homeTeam!.id] = game.homeTeam!;
+    if (game.awayTeam != null) byId[game.awayTeam!.id] = game.awayTeam!;
+  }
+  final teams = byId.values.toList()
+    ..sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
+  return teams;
+}
+
+List<GroupRef> distinctGroups(List<GameSummary> games) {
+  final byId = <int, GroupRef>{};
+  for (final game in games) {
+    if (game.group != null) byId[game.group!.id] = game.group!;
+  }
+  final groups = byId.values.toList()
+    ..sort((a, b) => (a.name ?? '').compareTo(b.name ?? ''));
+  return groups;
+}
+
+List<DateTime> distinctGameDates(List<GameSummary> games) {
   final dates = <DateTime>{};
   for (final game in games) {
     final start = game.startDate;
@@ -170,7 +199,7 @@ List<DateTime> _distinctGameDates(List<GameSummary> games) {
   return dates.toList()..sort();
 }
 
-bool _isSameDate(DateTime a, DateTime b) =>
+bool isSameDate(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
 /// For hver slutspilskamp med et ledigt hjemme-/udehold, som en tidligere
@@ -192,28 +221,58 @@ Map<int, Map<GameSlot, String>> knockoutPlaceholders(List<GameSummary> games) {
   return placeholders;
 }
 
-class _GameFilters extends StatelessWidget {
-  const _GameFilters({
+/// Filterrække genbrugt af både den almindelige kampoversigt og admins
+/// kampstyring. Hold-/gruppefiltrene kan slås fra ([showTeamGroupFilters])
+/// der hvor de ikke er relevante (fx datovisningen, som allerede filtrerer
+/// på en enkelt dag), og datofilteret er helt valgfrit ([dates] == null
+/// skjuler det) for steder, der styrer dato på anden vis (app-barens
+/// datostrip). Kamptype-filteret (gruppespil/slutspil) er altid med.
+class GameFilters extends StatelessWidget {
+  const GameFilters({
+    super.key,
     required this.teams,
     required this.groups,
+    this.dates,
     required this.selectedTeam,
     required this.selectedGroup,
+    this.selectedDate,
+    required this.selectedStageType,
     required this.onTeamChanged,
     required this.onGroupChanged,
+    this.onDateChanged,
+    required this.onStageTypeChanged,
     required this.onClearAll,
-  });
+    this.showTeamGroupFilters = true,
+  }) : assert(
+         dates == null || onDateChanged != null,
+         'onDateChanged skal angives, når dates er givet',
+       );
 
   final List<TeamRef> teams;
   final List<GroupRef> groups;
+  final List<DateTime>? dates;
 
   final TeamRef? selectedTeam;
   final GroupRef? selectedGroup;
+  final DateTime? selectedDate;
+  final GameStageType? selectedStageType;
 
   final ValueChanged<TeamRef?> onTeamChanged;
   final ValueChanged<GroupRef?> onGroupChanged;
+  final ValueChanged<DateTime?>? onDateChanged;
+  final ValueChanged<GameStageType?> onStageTypeChanged;
   final VoidCallback onClearAll;
 
-  bool get _hasActiveFilter => selectedTeam != null || selectedGroup != null;
+  final bool showTeamGroupFilters;
+
+  bool get _hasActiveFilter =>
+      (showTeamGroupFilters &&
+          (selectedTeam != null || selectedGroup != null)) ||
+      // Datoen tæller kun som et aktivt filter, når datofilteret rent
+      // faktisk vises (dvs. i "alle kampe"-visningen) — i datovisningen er
+      // en valgt dato altid sat og er ikke et filter, man kan "rydde".
+      (dates != null && selectedDate != null) ||
+      selectedStageType != null;
 
   @override
   Widget build(BuildContext context) {
@@ -222,26 +281,54 @@ class _GameFilters extends StatelessWidget {
       runSpacing: 8.0,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        _buildDropdown<TeamRef>(
-          context: context,
-          hint: "Alle hold",
-          value: selectedTeam,
-          items: teams,
-          itemLabel: (team) => team.name ?? "Ukendt hold",
-          onChanged: onTeamChanged,
-        ),
-        _buildDropdown<GroupRef>(
-          context: context,
-          hint: "Alle grupper",
-          value: selectedGroup,
-          items: groups,
-          itemLabel: (group) => group.name ?? "Ukendt gruppe",
-          onChanged: onGroupChanged,
-        ),
+        if (showTeamGroupFilters) ...[
+          _buildDropdown<TeamRef>(
+            context: context,
+            hint: "Alle hold",
+            icon: Icons.groups_outlined,
+            value: selectedTeam,
+            items: teams,
+            itemLabel: (team) => team.name ?? "Ukendt hold",
+            onChanged: onTeamChanged,
+          ),
+          _buildDropdown<GroupRef>(
+            context: context,
+            hint: "Alle grupper",
+            icon: Icons.workspaces_outline,
+            value: selectedGroup,
+            items: groups,
+            itemLabel: (group) => group.name ?? "Ukendt gruppe",
+            onChanged: onGroupChanged,
+          ),
+          _buildDropdown<GameStageType>(
+            context: context,
+            hint: "Alle kamptyper",
+            icon: Icons.emoji_events_outlined,
+            value: selectedStageType,
+            items: GameStageType.values,
+            itemLabel: (stage) => stage.displayName,
+            onChanged: onStageTypeChanged,
+          ),
+        ],
+        if (dates != null && dates!.isNotEmpty)
+          _buildDropdown<DateTime>(
+            context: context,
+            hint: "Alle datoer",
+            icon: Icons.event_outlined,
+            value: selectedDate,
+            items: dates!,
+            itemLabel: (date) => DateFormat('d. MMM', 'da_DK').format(date),
+            onChanged: onDateChanged!,
+          ),
+
         if (_hasActiveFilter)
           ActionChip(
-            avatar: const Icon(Icons.filter_alt_off, size: 18.0),
+            avatar: const Icon(Icons.filter_alt_off, size: 16.0),
             label: const Text("Ryd filtre"),
+            labelStyle: Theme.of(context).textTheme.labelMedium,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8.0),
+            ),
             onPressed: onClearAll,
           ),
       ],
@@ -251,30 +338,47 @@ class _GameFilters extends StatelessWidget {
   Widget _buildDropdown<T>({
     required BuildContext context,
     required String hint,
+    required IconData icon,
     required T? value,
     required List<T> items,
     required String Function(T) itemLabel,
     required ValueChanged<T?> onChanged,
   }) {
     final theme = Theme.of(context);
+    final labelStyle = theme.textTheme.labelMedium;
+    final iconColor = theme.colorScheme.onSurfaceVariant;
+
+    Widget buildLabel(String text) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16.0, color: iconColor),
+          const SizedBox(width: 6.0),
+          Text(text, style: labelStyle),
+        ],
+      );
+    }
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+      height: 32.0,
+      padding: const EdgeInsets.symmetric(horizontal: 10.0),
       decoration: BoxDecoration(
         border: Border.all(color: theme.colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(20.0),
+        borderRadius: BorderRadius.circular(8.0),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T?>(
           value: value,
-          hint: Text(hint, style: theme.textTheme.bodyMedium),
-          icon: const Icon(Icons.expand_more, size: 18.0),
-          borderRadius: BorderRadius.circular(12.0),
+          isDense: true,
+          hint: buildLabel(hint),
+          icon: const Icon(Icons.expand_more, size: 16.0),
+          borderRadius: BorderRadius.circular(8.0),
           items: [
-            DropdownMenuItem<T?>(value: null, child: Text(hint)),
+            DropdownMenuItem<T?>(value: null, child: buildLabel(hint)),
             ...items.map(
               (item) => DropdownMenuItem<T?>(
                 value: item,
-                child: Text(itemLabel(item)),
+                child: buildLabel(itemLabel(item)),
               ),
             ),
           ],
@@ -305,7 +409,7 @@ class GameDateBar extends ConsumerStatefulWidget
   final ValueChanged<DateTime?> onDateChanged;
 
   @override
-  Size get preferredSize => const Size.fromHeight(56.0);
+  Size get preferredSize => const Size.fromHeight(64.0);
 
   @override
   ConsumerState<GameDateBar> createState() => _GameDateBarState();
@@ -356,7 +460,7 @@ class _GameDateBarState extends ConsumerState<GameDateBar> {
       return SizedBox(height: widget.preferredSize.height);
     }
 
-    final dates = _distinctGameDates(gamesAsync.value ?? const []);
+    final dates = distinctGameDates(gamesAsync.value ?? const []);
 
     // Dagens dato er altid med som anker i stripet, selvom der ikke er
     // kampe i dag — så kan man altid se, hvor "i dag" ligger, og nemt
@@ -364,7 +468,7 @@ class _GameDateBarState extends ConsumerState<GameDateBar> {
     // næste dag med kampe (til højre).
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    if (!dates.any((d) => _isSameDate(d, today))) {
+    if (!dates.any((d) => isSameDate(d, today))) {
       dates.add(today);
       dates.sort();
     }
@@ -389,12 +493,12 @@ class _GameDateBarState extends ConsumerState<GameDateBar> {
           final date = dates[index];
           final selected =
               widget.selectedDate != null &&
-              _isSameDate(date, widget.selectedDate!);
+              isSameDate(date, widget.selectedDate!);
           return _DateChip(
             key: _keyFor(date),
             label: _dateChipLabel(date),
             selected: selected,
-            isToday: _isSameDate(date, today),
+            isToday: isSameDate(date, today),
             onTap: () {
               widget.onDateChanged(date);
               _centerOn(date, animate: true);
@@ -412,9 +516,9 @@ String _dateChipLabel(DateTime date) {
   final yesterday = today.subtract(const Duration(days: 1));
   final tomorrow = today.add(const Duration(days: 1));
 
-  if (_isSameDate(date, today)) return "I dag";
-  if (_isSameDate(date, tomorrow)) return "I morgen";
-  if (_isSameDate(date, yesterday)) return "I går";
+  if (isSameDate(date, today)) return "I dag";
+  if (isSameDate(date, tomorrow)) return "I morgen";
+  if (isSameDate(date, yesterday)) return "I går";
 
   final weekday = DateFormat('EEE', 'da_DK').format(date);
   final dayMonth = DateFormat('d. MMM', 'da_DK').format(date);
@@ -449,6 +553,11 @@ class _DateChip extends StatelessWidget {
         : theme.colorScheme.onSurfaceVariant;
     final borderWidth = selected ? 1.5 : 1.0;
 
+    // Bemærk: BoxDecoration understøtter ikke en borderRadius kombineret
+    // med en Border, der har forskellig farve/bredde pr. side (Flutter
+    // kaster "A borderRadius can only be given on borders with uniform
+    // colors" ved paint). "I dag"-markeringen tegnes derfor som en lille
+    // separat streg under teksten i stedet for en ujævn kant.
     return Material(
       color: background,
       borderRadius: BorderRadius.circular(20.0),
@@ -459,26 +568,30 @@ class _DateChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20.0),
-            // "I dag" får altid en fremhævet underkant, uanset om dagen er
-            // valgt eller ej, så man hurtigt kan se, hvor "i dag" ligger i
-            // stripet.
-            border: Border(
-              top: BorderSide(color: borderColor, width: borderWidth),
-              left: BorderSide(color: borderColor, width: borderWidth),
-              right: BorderSide(color: borderColor, width: borderWidth),
-              bottom: BorderSide(
-                color: isToday ? theme.colorScheme.primary : borderColor,
-                width: isToday ? 3.0 : borderWidth,
-              ),
-            ),
+            border: Border.all(color: borderColor, width: borderWidth),
           ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: foreground,
-              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: foreground,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+              const SizedBox(height: 3.0),
+              Container(
+                width: 14.0,
+                height: 2.5,
+                decoration: BoxDecoration(
+                  color: isToday
+                      ? theme.colorScheme.primary
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(2.0),
+                ),
+              ),
+            ],
           ),
         ),
       ),

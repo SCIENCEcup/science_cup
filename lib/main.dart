@@ -4,19 +4,28 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' hide Provider;
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:science_cup_app/core/storage/shared_preferences_provider.dart';
+import 'package:science_cup_app/flavors.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/navigation/app_router.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Kører man `main.dart` direkte (uden at gå via main_dev.dart/
+  // main_prod.dart), er der ikke sat en flavor endnu — falder tilbage til
+  // dev, som er den hidtidige standardopførsel.
+  if (!F.appFlavorIsSet) {
+    F.appFlavor = Flavor.dev;
+  }
 
   final prefs = await SharedPreferences.getInstance();
 
   await initializeDateFormatting('da_DK', null);
 
-  await dotenv.load(fileName: ".env.dev");
+  final envFile = F.appFlavor == Flavor.prod ? ".env.prod" : ".env.dev";
+  await dotenv.load(fileName: envFile);
 
   Supabase.initialize(
     /// TODO: These should be set with env vars in a github action

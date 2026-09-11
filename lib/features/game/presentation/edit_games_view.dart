@@ -36,7 +36,16 @@ class _EditGamesViewState extends ConsumerState<EditGamesView> {
     return gamesState.when(
       data: (List<GameSummary> games) {
         if (games.isEmpty) {
-          return const Center(child: Text("Ingen kampe fundet"));
+          // Vis stadig "Tilføj kamp"-knappen her — ellers er der ingen vej
+          // videre, hvis sæsonen endnu ikke har nogen kampe.
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _addGameButton(context),
+              const SizedBox(height: 24.0),
+              const Center(child: Text("Ingen kampe fundet")),
+            ],
+          );
         }
 
         final teams = distinctTeams(games);
@@ -82,18 +91,7 @@ class _EditGamesViewState extends ConsumerState<EditGamesView> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            FilledButton.icon(
-              onPressed: () {
-                showCreateEntityModalBottomSheet(
-                  context: context,
-                  builder: (context) {
-                    return AddEditGameModal();
-                  },
-                );
-              },
-              label: Text("Tilføj kamp"),
-              icon: Icon(Icons.add),
-            ),
+            _addGameButton(context),
             const SizedBox(height: 12.0),
             GameFilters(
               teams: teams,
@@ -136,6 +134,21 @@ class _EditGamesViewState extends ConsumerState<EditGamesView> {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stackTrace) => Center(child: Text("Fejl: $error")),
+    );
+  }
+
+  Widget _addGameButton(BuildContext context) {
+    return FilledButton.icon(
+      onPressed: () {
+        showCreateEntityModalBottomSheet(
+          context: context,
+          builder: (context) {
+            return AddEditGameModal();
+          },
+        );
+      },
+      label: Text("Tilføj kamp"),
+      icon: Icon(Icons.add),
     );
   }
 }

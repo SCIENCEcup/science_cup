@@ -348,6 +348,16 @@ class GameFilters extends StatelessWidget {
     final labelStyle = theme.textTheme.labelMedium;
     final iconColor = theme.colorScheme.onSurfaceVariant;
 
+    // DropdownButton kræver, at dets value matcher PRÆCIS ét element i
+    // items, ellers kaster den en assertion. Den valgte værdi kan blive
+    // "forældet" i forhold til den aktuelle liste — fx en valgt dato uden
+    // kampe, når man skifter til en anden sæson/visning — så vi falder
+    // trygt tilbage til "intet valgt" i stedet for at crashe.
+    T? safeValue;
+    if (value != null && items.contains(value)) {
+      safeValue = value;
+    }
+
     Widget buildLabel(String text) {
       return Row(
         mainAxisSize: MainAxisSize.min,
@@ -368,7 +378,7 @@ class GameFilters extends StatelessWidget {
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<T?>(
-          value: value,
+          value: safeValue,
           isDense: true,
           hint: buildLabel(hint),
           icon: const Icon(Icons.expand_more, size: 16.0),

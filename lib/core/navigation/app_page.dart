@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:science_cup_app/core/presentation/widgets/auth_profile_button.dart';
 
 class WelcomePage extends StatelessWidget {
@@ -13,7 +14,12 @@ class WelcomePage extends StatelessWidget {
         title: Text("Velkommen til SCIENCEcup"),
         centerTitle: false,
         actions: [
-          AuthProfileButton()
+          IconButton(
+            tooltip: "Om appen",
+            icon: const Icon(Icons.info_outline),
+            onPressed: () => context.push('/about'),
+          ),
+          AuthProfileButton(),
         ],
       ),
       body: child,

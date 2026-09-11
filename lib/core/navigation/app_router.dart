@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:science_cup_app/core/navigation/app_page.dart';
 import 'package:science_cup_app/core/navigation/season_tabs.dart';
+import 'package:science_cup_app/core/presentation/pages/app_info_page.dart';
 import 'package:science_cup_app/features/auth/application/auth_notifier.dart';
 import 'package:science_cup_app/features/auth/application/auth_state.dart';
 import 'package:science_cup_app/features/auth/presentation/login_page.dart';
@@ -49,6 +50,11 @@ GoRouter appRouter(Ref ref) {
       ),
 
       GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+
+      GoRoute(
+        path: '/about',
+        builder: (context, state) => const AppInfoPage(),
+      ),
 
       // Validerer kun ID og omdirigerer til default tab
       GoRoute(

@@ -97,14 +97,29 @@ class _SeasonPageState extends ConsumerState<SeasonPage> {
                 IconButton(
                   tooltip: _showAllGames ? "Vis efter dato" : "Vis alle kampe",
                   icon: Icon(_showAllGames ? Icons.calendar_today : Icons.list),
-                  onPressed: () =>
-                      setState(() => _showAllGames = !_showAllGames),
+                  onPressed: () => setState(() {
+                    _showAllGames = !_showAllGames;
+                    // Datofilteret hører kun til dato-visningen: ryd det,
+                    // når vi skifter til liste-visning (så man ser alle
+                    // kampe), og sæt det til dags dato igen, når vi
+                    // skifter tilbage til dato-visningen — ellers viser
+                    // dato-visningen ingen kampe, hvis filteret blev
+                    // ryddet, mens man var i liste-visning.
+                    _selectedGameDate = _showAllGames
+                        ? null
+                        : _startOfToday();
+                  }),
                 ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4.0),
                 child: AddSeasonButton(
                   includeText: false,
                 ), // Tilføj sæson-knap uden tekst
+              ),
+              IconButton(
+                tooltip: "Om appen",
+                icon: const Icon(Icons.info_outline),
+                onPressed: () => context.push('/about'),
               ),
             ],
             // Viser datoerne, hvor sæsonen faktisk har kampe, i bunden af

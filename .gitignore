@@ -74,3 +74,6 @@ ehthumbs.db
 .env.*
 **/ios/Flutter/Development.xcconfig
 **/ios/Flutter/Release.xcconfig
+**/android/key.properties
+*.jks
+*.keystore

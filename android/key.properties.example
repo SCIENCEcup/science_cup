@@ -1,0 +1,10 @@
+# Kopiér denne fil til "key.properties" (samme mappe) og udfyld med dine
+# rigtige værdier. "key.properties" er gitignored og må ALDRIG committes.
+#
+# storeFile kan enten være en absolut sti, eller en sti relativ til
+# android/app/ (fx "../upload-keystore.jks" hvis keystoren ligger i
+# android/).
+storePassword=REPLACE_ME
+keyPassword=REPLACE_ME
+keyAlias=upload
+storeFile=REPLACE_ME.jks

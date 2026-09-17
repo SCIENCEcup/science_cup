@@ -11,6 +11,12 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Sikrer at keytool/Gradle afkoder adgangskoder ens uanset hvilken
+    # locale runner-imaget har som standard — vigtigst hvis en adgangskode
+    # nogensinde indeholder ikke-ASCII tegn (fx æøå).
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     steps:
       - uses: actions/checkout@v4
 
@@ -34,39 +40,57 @@ jobs:
 
       # Keystore, key.properties og .env.prod indeholder alle hemmeligheder,
       # og genskabes derfor fra GitHub Secrets frem for at ligge i repoet.
+      #
+      # OBS: hemmeligheder sendes IKKE direkte ind i run:-scriptet via
+      # ${{ secrets.X }} — de lægges i env: og læses ud som "$VAR" i bash.
+      # Ellers ville bash selv forsøge at fortolke $-tegn, backticks og
+      # backslashes i adgangskoden/nøglen, hvilket tavst ødelægger værdien
+      # uden nogen fejl, hvis den indeholder sådan et tegn (meget almindeligt
+      # i genererede adgangskoder).
       - name: Genskab keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PLAY_KEYSTORE_BASE64 }}
         run: |
-          printf '%s' "${{ secrets.PLAY_KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
 
-      # Fejler her på et par sekunder med en klar besked, hvis
-      # PLAY_KEYSTORE_BASE64-secreten er blevet ødelagt (fx ved kopiering
-      # gennem noget der har ændret linjeskift/tegn), i stedet for at fejle
-      # efter et langt Gradle-byg med en kryptisk ASN.1-fejl.
+      # Fejler her på et par sekunder med en klar besked, hvis keystoren eller
+      # adgangskoderne er forkerte, i stedet for at fejle efter et langt
+      # Gradle-byg med en kryptisk fejl fra signerings-trinnet.
       - name: Validér keystore
+        env:
+          KEY_ALIAS: ${{ secrets.PLAY_KEYSTORE_KEY_ALIAS }}
+          STORE_PASSWORD: ${{ secrets.PLAY_KEYSTORE_STORE_PASSWORD }}
         run: |
           keytool -list \
             -keystore android/app/upload-keystore.jks \
-            -alias "${{ secrets.PLAY_KEYSTORE_KEY_ALIAS }}" \
-            -storepass "${{ secrets.PLAY_KEYSTORE_STORE_PASSWORD }}" \
+            -alias "$KEY_ALIAS" \
+            -storepass "$STORE_PASSWORD" \
           || {
-            echo "::error::Keystoren kunne ikke læses. PLAY_KEYSTORE_BASE64-secreten er sandsynligvis korrupt eller matcher ikke alias/adgangskode-secrets. Genopret den lokalt med: base64 -i upload-keystore.jks | tr -d '\n' | pbcopy — og indsæt som ren tekst (ikke via en rich-text-editor)."
+            echo "::error::Keystoren kunne ikke læses med de angivne secrets. Enten er PLAY_KEYSTORE_BASE64 korrupt, eller også matcher PLAY_KEYSTORE_KEY_ALIAS/PLAY_KEYSTORE_STORE_PASSWORD ikke keystoren. Genskab base64 lokalt med: base64 -i upload-keystore.jks | tr -d '\n' | pbcopy — og dobbelttjek at adgangskoderne er kopieret uden ekstra mellemrum/linjeskift."
             exit 1
           }
 
       - name: Skriv android/key.properties
+        env:
+          STORE_PASSWORD: ${{ secrets.PLAY_KEYSTORE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.PLAY_KEYSTORE_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PLAY_KEYSTORE_KEY_ALIAS }}
         run: |
           cat > android/key.properties <<EOF
-          storePassword=${{ secrets.PLAY_KEYSTORE_STORE_PASSWORD }}
-          keyPassword=${{ secrets.PLAY_KEYSTORE_KEY_PASSWORD }}
-          keyAlias=${{ secrets.PLAY_KEYSTORE_KEY_ALIAS }}
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
           storeFile=upload-keystore.jks
           EOF
 
       - name: Skriv .env.prod
+        env:
+          PROD_SUPABASE_URL: ${{ secrets.PROD_SUPABASE_URL }}
+          PROD_SUPABASE_PUBLIC_KEY: ${{ secrets.PROD_SUPABASE_PUBLIC_KEY }}
         run: |
           cat > .env.prod <<EOF
-          SUPABASE_URL=${{ secrets.PROD_SUPABASE_URL }}
-          SUPABASE_PUBLIC_KEY=${{ secrets.PROD_SUPABASE_PUBLIC_KEY }}
+          SUPABASE_URL=$PROD_SUPABASE_URL
+          SUPABASE_PUBLIC_KEY=$PROD_SUPABASE_PUBLIC_KEY
           EOF
 
       # pubspec.yaml lister .env.dev som asset uanset flavor, så filen skal
@@ -86,10 +110,12 @@ jobs:
             --build-number=${{ github.run_number }}
 
       - name: Skriv release notes til Play-format
+        env:
+          RELEASE_NOTES: ${{ inputs.release_notes }}
         run: |
           mkdir -p whatsnew
           # Play kræver maks. 500 tegn pr. sprog.
-          printf '%s' "${{ inputs.release_notes }}" | head -c 500 > whatsnew/whatsnew-da-DK
+          printf '%s' "$RELEASE_NOTES" | head -c 500 > whatsnew/whatsnew-da-DK
 
       - name: Upload til Google Play (Closed testing)
         uses: r0adkll/upload-google-play@v1

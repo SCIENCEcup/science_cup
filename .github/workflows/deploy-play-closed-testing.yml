@@ -27,6 +27,11 @@ jobs:
       - name: Installér Dart-afhængigheder
         run: flutter pub get
 
+      # .g.dart/.freezed.dart er gitignored og genereres derfor her, ligesom
+      # man selv skal køre build_runner lokalt efter et checkout.
+      - name: Generér kode (freezed/riverpod/json)
+        run: dart run build_runner build
+
       # Keystore, key.properties og .env.prod indeholder alle hemmeligheder,
       # og genskabes derfor fra GitHub Secrets frem for at ligge i repoet.
       - name: Genskab keystore

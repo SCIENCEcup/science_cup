@@ -54,6 +54,12 @@ jobs:
           SUPABASE_PUBLIC_KEY=${{ secrets.PROD_SUPABASE_PUBLIC_KEY }}
           EOF
 
+      # pubspec.yaml lister .env.dev som asset uanset flavor, så filen skal
+      # eksistere for at bundlingen ikke fejler — indholdet er ligegyldigt,
+      # da prod-builden aldrig læser den.
+      - name: Skriv tom .env.dev (kræves som asset, bruges ikke i prod)
+        run: touch .env.dev
+
       # github.run_number stiger automatisk ved hvert workflow-run, så
       # versionCode altid er unikt uden manuel indgriben.
       - name: Byg release App Bundle (prod)

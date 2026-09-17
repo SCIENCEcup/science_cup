@@ -36,7 +36,22 @@ jobs:
       # og genskabes derfor fra GitHub Secrets frem for at ligge i repoet.
       - name: Genskab keystore
         run: |
-          echo "${{ secrets.PLAY_KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+          printf '%s' "${{ secrets.PLAY_KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+
+      # Fejler her på et par sekunder med en klar besked, hvis
+      # PLAY_KEYSTORE_BASE64-secreten er blevet ødelagt (fx ved kopiering
+      # gennem noget der har ændret linjeskift/tegn), i stedet for at fejle
+      # efter et langt Gradle-byg med en kryptisk ASN.1-fejl.
+      - name: Validér keystore
+        run: |
+          keytool -list \
+            -keystore android/app/upload-keystore.jks \
+            -alias "${{ secrets.PLAY_KEYSTORE_KEY_ALIAS }}" \
+            -storepass "${{ secrets.PLAY_KEYSTORE_STORE_PASSWORD }}" \
+          || {
+            echo "::error::Keystoren kunne ikke læses. PLAY_KEYSTORE_BASE64-secreten er sandsynligvis korrupt eller matcher ikke alias/adgangskode-secrets. Genopret den lokalt med: base64 -i upload-keystore.jks | tr -d '\n' | pbcopy — og indsæt som ren tekst (ikke via en rich-text-editor)."
+            exit 1
+          }
 
       - name: Skriv android/key.properties
         run: |
